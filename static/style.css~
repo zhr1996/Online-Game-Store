@@ -1,0 +1,12 @@
+body {
+  font-family: "helvetica", sans-serif;
+  text-align: center;
+
+div.horizontalgap {
+  float: left;
+  overflow: hidden;
+  height: 1px;
+  width: 0px;
+}
+
+}

@@ -1,0 +1,112 @@
+# Copyright 2018 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from flask import Flask, render_template, request, session, redirect
+from google.cloud import datastore
+from google.oauth2 import id_token
+
+import datetime
+import sys
+import requests
+
+datastore_client = datastore.Client()
+DEFAULT_KEY = 'guestbook-main'
+
+app = Flask(__name__)
+
+app.secret_key = b'lkjadfsj009(*02347@!$&'
+
+"""
+User class I created, serves as a placeholder demonstrator
+to store google user info
+"""
+
+# write new message to guestbook
+def store_greeting(message, username, email, dt, kn):
+    entity = datastore.Entity(key=datastore_client.key(kn))
+    entity.update({
+        'message': message,
+        'timestamp': dt,
+        'username': username,
+        'email': email
+    })
+
+    datastore_client.put(entity)
+
+# fetch most recent 'limit' number of messages from guestbook
+def fetch_greetings(limit, kn):
+    query = datastore_client.query(kind=kn)
+    query.order = ['-timestamp']
+
+    greetings = query.fetch(limit=limit)
+
+    return greetings
+
+# main page HTTP request processing
+@app.route('/', methods=['GET', 'POST'])
+def root():
+    key_name = DEFAULT_KEY
+
+    if 'username' in session:
+        username = session['username'] 
+    else:
+        username = ''
+
+    if 'email' in session:
+        useremail = session['email'] 
+    else:
+        useremail = ''
+
+    # If POST, store the new message into Datastore in the appropriate guestbook
+    if request.method == 'POST':
+        key_name = request.form['guestbook_name']
+        store_greeting(request.form['content'], username, useremail, datetime.datetime.now(), key_name)
+
+    # Fetch the most recent 10 messages from the appropriate guestbook in Datastore
+    greetings = fetch_greetings(10, key_name)
+
+    return render_template(
+        'index.html', greetings=greetings, guestbook_name=key_name)
+
+@app.route('/login', methods=['POST'])
+def login():
+
+    # Decode the incoming data
+    token = request.data.decode('utf-8')
+
+    # Send to google for verification and get JSON return values
+    verify = requests.get("https://oauth2.googleapis.com/tokeninfo?id_token=" + token)
+    
+    # Store the name and email
+    # username = verify.json()["name"]
+    # useremail = verify.json()["email"]
+
+    # Use a session cookie to store the username and email
+
+    session['username'] = verify.json()["name"]
+    session['email'] = verify.json()["email"]
+
+    return redirect("/")
+
+
+if __name__ == '__main__':
+    # This is used when running locally only. When deploying to Google App
+    # Engine, a webserver process such as Gunicorn will serve the app. This
+    # can be configured by adding an `entrypoint` to app.yaml.
+
+    # Flask's development server will automatically serve static files in
+    # the "static" directory. See:
+    # http://flask.pocoo.org/docs/1.0/quickstart/#static-files. Once deployed,
+    # App Engine itself will serve those files as configured in app.yaml.
+    app.run(host='127.0.0.1', port=8080, debug=True)
